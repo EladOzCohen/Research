@@ -1,0 +1,459 @@
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(lme4)
+library(tidyverse)
+library(dplyr)
+library(MASS)
+library(readr)
+library(ggplot2)
+library(effectsize)
+library(tidyr)
+library("emmeans")  # emmeans must now be loaded explicitly for follow-up tests.
+library("afex")     # needed for ANOVA functions.
+library("multcomp")
+library(MASS) # v7.3-50
+library(apaTables) # ic
+library (esc)
+library(reshape2)
+library(readr)
+library(data.table)
+library(ggpubr)
+```
+
+
+
+CR|SEEN Analysis
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+newdata <- read_csv("D:/OneDrive/EladsB/research_related/EladsHull3/results_and_analysis/data_cleaned.csv")
+newdata$Congruency <- replace(newdata$Congruency, newdata$Congruency == "incongruent", "Incongruent")
+
+#newdata <- subset(newdata, present_time == 0.017 | present_time == 0.034 | present_time == 0.1 | present_time == 0.5)
+
+
+newdata$seen <- ifelse(newdata$seen == 'p',1,0) # seen = 1, unseen = 0
+data_catch <- subset(newdata, correctans == 'None') #copying the catch trials to 'data_catch'
+data <- subset(newdata, correctans != 'None') #extracting only the non-catch and non-training trials
+data$participant <- as.factor(data$participant) #coding the 'participants' variable as factors
+data$present_time <- as.factor(data$present_time) #coding the 'presentation time' variable is factor
+data$rt <- data$rt * 1000 # transforming RT to be in milliseconds instead of seconds.
+
+
+
+
+
+
+# the following code filters out participants with too fast/slow RT
+# calculated as 3 S.D above and below their mean
+
+a <- data  %>% group_by(participant,task_Type,Congruency,present_time) %>% 
+  summarise((rt - mean(rt))/sd(rt))
+data$rt_z_score <- a$`(rt - mean(rt))/sd(rt)`
+data <- subset(data,rt_z_score < 3 & rt_z_score > -3)
+
+
+
+
+# the following code extracts only the variabels that i'll use in the upcoming analysis
+data <- data[,c('participant','Tot_surface_Left','Tot_surface_Right','Congruency',
+                      'present_time','task_Type','true_cr','seen','rt','Density_Ratio','set')]
+
+
+
+
+
+# removing participants number 21 and 15 due to high 'seen' reports in the catch trials.
+data <- subset(data, participant != 21 & participant != 15) 
+
+
+
+
+
+
+# Anova modeling CR|SEEN
+data <- subset(data, seen == 1) #extracting only the trials with 'seen == 1'
+
+
+
+
+
+
+# the following is the actual model fitting
+crseen_aov <- aov_ez("participant", "true_cr", data,between = c("set"),
+        within = c("task_Type","Congruency", "present_time"),anova_table=list(correction = "GG", es = "pes"))
+
+
+
+
+
+
+
+#displaying the ANOVA result in a nice look table.
+knitr::kable((nice(crseen_aov)))
+
+
+
+
+
+
+
+# Presentation time main effect graph
+afex_plot(crseen_aov,x = "present_time",
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_classic() + ggtitle("Accuracy ~ durtaion") + ylab("CR|Seen") +
+  coord_cartesian(ylim=c(0.3,1)) + scale_x_discrete(labels = c(17,34,100,500))
+
+
+
+
+
+
+
+
+
+# Congruency main effect garph
+afex_plot(crseen_aov,x = "Congruency", 
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_classic() + ggtitle("Accuracy ~ Congruency") + ylab("CR|Seen") +
+  coord_cartesian(ylim=c(0.3,1))
+
+
+
+
+
+
+
+
+# Presentation time X congruency interaction graph
+crseen_triple <- afex_plot(crseen_aov,x = "present_time",trace = "Congruency", panel = "task_Type",
+                      factor_levels = list(task_Type = c("Numerical Judgment","Surface Judgment")),
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_bw() + ylab("CR|Seen") +  xlab("Presentation Time") + 
+   scale_x_discrete(labels = c(17,34,100,500)) + ylim(c(0.3,1)) # Note the physical task! perfect replication of previous experiment right there!!
+
+
+
+
+
+
+#write.csv(crseen_aov[["data"]][["wide"]],'K:/research_related/EladsHull3/results_and_analysis/Jasp_Analysis/cr_seen.csv')
+
+```
+
+
+
+
+
+Reaction Time Analsis
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+newdata <- read_csv("D:/OneDrive/EladsB/research_related/EladsHull3/results_and_analysis/data_cleaned.csv")
+newdata$Congruency <- replace(newdata$Congruency, newdata$Congruency == "incongruent", "Incongruent")
+
+newdata$seen <- ifelse(newdata$seen == 'p',1,0)
+data_catch <- subset(newdata, correctans = 'None')
+
+data <- subset(newdata, correctans != 'None')
+data$present_time <- as.factor(data$present_time)
+data$participant <- as.factor(data$participant)
+
+
+data$rt <- data$rt * 1000
+
+
+
+data <- data[,c('participant','Tot_surface_Left','Tot_surface_Right','Congruency',
+                      'present_time','task_Type','true_cr','seen','rt','Density_Ratio','set')]
+
+data <- subset(data, participant != 21 & participant != 15)
+
+data <- subset(data, true_cr == 1 & seen == 1)
+
+# Anova modeling
+rt_aov <- aov_ez("participant", "rt", data,between = c("set"),
+        within = c("task_Type","Congruency", "present_time"),anova_table=list(correction = "GG", es = "pes"))
+knitr::kable((nice(rt_aov)))
+
+
+
+# Presentation time main effect
+afex_plot(rt_aov,x = "present_time",
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_classic() + ggtitle("RT ~ durtaion") + ylab("RT") + ylim(c(0,1000)) + scale_x_discrete(labels = c(17,34,100,500))
+
+
+# Congruency main effect
+afex_plot(rt_aov,x = "Congruency", 
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_classic() + ggtitle("RT ~ Congruency") + ylab("RT") + ylim(c(0,1000))
+
+# Congruency main effect
+afex_plot(rt_aov,x = "task_Type", 
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_classic() + ggtitle("RT ~ Task Type") + ylab("RT") + ylim(c(0,1000))
+
+
+# Presentation time X congruency interaction
+rt_triple <- afex_plot(rt_aov,x = "present_time",trace = "Congruency", panel = "task_Type",
+                      factor_levels = list(task_Type = c("Numerical Judgment","Surface Judgment")),
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_bw() + ylab("RT (in miliseconds)") +
+    xlab("Presentation Time") + ylim(c(200,800))+ scale_x_discrete(labels = c(17,34,100,500))
+
+ggsave('rt_trip.png',dpi = 240)
+```
+
+
+
+
+
+
+
+Visibility Analysis 
+
+```{r}
+
+newdata <- read_csv("D:/OneDrive/EladsB/research_related/EladsHull3/results_and_analysis/data_cleaned.csv")
+
+newdata$Congruency <- replace(newdata$Congruency, newdata$Congruency == "incongruent", "Incongruent")
+
+newdata <- subset(newdata, present_time == 0.017 | present_time == 0.034 | present_time == 0.1 | present_time == 0.5)
+newdata$seen <- ifelse(newdata$seen == 'p',1,0)
+data_catch <- subset(newdata, correctans == 'None')
+data <- subset(newdata, correctans != 'None')
+data$participant <- as.factor(data$participant)
+data$present_time <- as.factor(data$present_time)
+data <- subset(data, participant != 21 & participant != 15)
+
+
+data$Density_Ratio <- round(data$Density_Ratio,4)
+data$Surface_Ratio <- round(data$Surface_Ratio,4)
+data$CH_Ratio <- round(data$CH_Ratio,4)
+data$ADS_Ratio <- round(data$ADS_Ratio,4)
+
+
+a <- data  %>% group_by(participant,task_Type,Congruency,present_time) %>% 
+  summarise((rt - mean(rt))/sd(rt))
+data$rt_z_score <- a$`(rt - mean(rt))/sd(rt)`
+data <- subset(data,rt_z_score < 3 & rt_z_score > -3)
+
+
+
+
+data$rt <- data$rt * 1000
+
+data <- data[,c('participant','Tot_surface_Left','Tot_surface_Right','Congruency',
+                      'present_time','task_Type','true_cr','seen','rt','Density_Ratio','set')]
+
+
+
+
+# Anova modeling
+seen_aov <- aov_ez("participant", "seen", data,between = c("set"),
+        within = c("task_Type","Congruency", "present_time"),anova_table=list(correction = "GG", es = "pes"))
+knitr::kable((nice(seen_aov)))
+
+
+# Presentation time main effect
+afex_plot(seen_aov,x = "task_Type",
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_classic() + ggtitle("Viz ~ Task Type") + ylab("Mean Visiibility") +
+  coord_cartesian(ylim=c(0.3,1))  + xlab("Task Type")
+
+
+# Presentation time main effect
+afex_plot(seen_aov,x = "present_time",
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_classic() + ggtitle("Viz ~ durtaion") + ylab("Mean Visiibility") +
+  coord_cartesian(ylim=c(0.3,1)) + scale_x_discrete(labels = c(17,34,100,500)) 
+
+
+# Congruency main effect
+seen_double <- afex_plot(seen_aov,x = "task_Type",trace = "Congruency",
+                          factor_levels = list(task_Type = c("Numerical Judgment","Surface Judgment")),
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_bw()  + ylab("Mean Visibility") +
+  coord_cartesian(ylim=c(0.49,1))  + xlab("Task Type")
+seen_double
+#ggsave('seen_double.png',dpi = 240)
+
+# Presentation time X task Type interaction
+afex_plot(seen_aov,x = "present_time",trace = "task_Type", 
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_classic() + ggtitle("Visibility By Presentation Time X Congruency Interaction") + ylab("Mean Visbility") +  xlab("Presentation Time") +
+  coord_cartesian(ylim=c(0.3,1)) + scale_x_discrete(labels = c(17,34,100,500)) 
+
+
+# Presentation time X congruency interaction
+viz_trip <- afex_plot(seen_aov,x = "present_time",trace = "Congruency", panel = "task_Type",
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_classic() + ggtitle("Visibility By Presentation Time X Congruency Interaction") + ylab("Mean Visbility") +  xlab("Presentation Time") +
+  coord_cartesian(ylim=c(0.3,1)) + scale_x_discrete(labels = c(17,34,100,500)) 
+
+viz_trip
+
+comparison <- emmeans(seen_aov, ~ Congruency|task_Type) 
+pairs(comparison,adj="bon")
+
+### export the WIDE file to know what's the T-test value.
+
+#write.csv(seen_aov[["data"]][["wide"]],'K:/research_related/EladsHull3/results_and_analysis/Jasp_Analysis/seen.csv')
+
+```
+
+
+```{r fig.height=10, fig.width=5}
+ggpubr::ggarrange(seen_double,crseen_triple,rt_triple,common.legend = T,align = "hv",nrow = 3,ncol = 1,
+                  labels = 'AUTO')
+
+```
+
+
+
+
+
+
+
+Catch trials analysis
+```{r message=FALSE, warning=FALSE}
+newdata <- read_csv("K:/research_related/EladsHull3/results_and_analysis/data_files/data_cleaned.csv")
+
+newdata <- subset(newdata, present_time == 0.017 | present_time == 0.034 | present_time == 0.1 | present_time == 0.5)
+
+#testing <- newdata[,c('task_Type','N_Left','N_RIght','subj_response.keys','true_cr')]
+
+
+newdata$seen <- ifelse(newdata$seen == 'p',1,0)
+data_catch <- subset(newdata, correctans == 'None')
+data_catch$participant <- as.factor(data_catch$participant)
+
+data_catch$present_time <- as.factor(data_catch$present_time)
+data_catch$Density_Ratio <- as.numeric(data_catch$Density_Left)/as.numeric(data_catch$Density_Right)
+data_catch$Density_Ratio <- ifelse(data_catch$Density_Ratio > 1,(data_catch$Density_Ratio)^-1,data$Density_Ratio)
+data_catch$Surf_Ratio <- as.numeric(data_catch$Tot_surface_Left)/as.numeric(data_catch$Tot_surface_Right)
+data_catch$Surf_Ratio <- ifelse(data_catch$Surf_Ratio > 1,(data_catch$Surf_Ratio)^-1,data_catch$Surf_Ratio)
+data_catch$set <- as.factor(data_catch$set)
+data_catch$CH_Ratio <- as.numeric(data_catch$CHareaLeft)/as.numeric(data_catch$CHareaRight)
+data_catch$CH_Ratio <- ifelse(data_catch$CH_Ratio > 1,(data$CH_Ratio)^-1,data_catch$CH_Ratio)
+
+data_catch$ADS_Left <- as.numeric(data_catch$Tot_surface_Left)/as.numeric(data_catch$N_Left)
+data_catch$ADS_Right <- as.numeric(data_catch$Tot_surface_Right)/as.numeric(data_catch$N_RIght)
+data_catch$ADS_Ratio <- data_catch$ADS_Left/data_catch$ADS_Right
+data_catch$ADS_Ratio <- ifelse(data_catch$ADS_Ratio > 1,(data_catch$ADS_Ratio)^-1,data_catch$ADS_Ratio)
+
+
+View(data_catch %>% group_by(participant) %>% summarise(mean_yes = mean(seen),
+                                                        sd_yes = sd(seen)))
+
+
+
+
+```
+
+
+
+
+
+
+Stimuli Properties.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+newdata <- read_csv("K:/research_related/EladsHull3/results_and_analysis/data_files/data_cleaned.csv")
+newdata$participant <- as.factor(newdata$participant)
+newdata$present_time <- as.factor(newdata$present_time)
+newdata$Density_Ratio <- as.numeric(newdata$Density_Left)/as.numeric(newdata$Density_Right)
+newdata$Density_Ratio <- ifelse(newdata$Density_Ratio > 1,(newdata$Density_Ratio)^-1,newdata$Density_Ratio)
+newdata$Surf_Ratio <- as.numeric(newdata$Tot_surface_Left)/as.numeric(newdata$Tot_surface_Right)
+newdata$Surf_Ratio <- ifelse(newdata$Surf_Ratio > 1,(newdata$Surf_Ratio)^-1,newdata$Surf_Ratio)
+newdata$set <- as.factor(newdata$set)
+newdata$CH_Ratio <- as.numeric(newdata$CHareaLeft)/as.numeric(newdata$CHareaRight)
+newdata$CH_Ratio <- ifelse(newdata$CH_Ratio > 1,(newdata$CH_Ratio)^-1,newdata$CH_Ratio)
+
+newdata$ADS_Left <- as.numeric(newdata$Tot_surface_Left)/as.numeric(newdata$N_Left)
+newdata$ADS_Right <- as.numeric(newdata$Tot_surface_Right)/as.numeric(newdata$N_RIght)
+newdata$ADS_Ratio <- newdata$ADS_Left/newdata$ADS_Right
+newdata$ADS_Ratio <- ifelse(newdata$ADS_Ratio > 1,(newdata$ADS_Ratio)^-1,newdata$ADS_Ratio)
+
+data <- subset(data,participant == 1)
+
+
+
+
+data <- newdata[,c('participant','N_Left','N_RIght','Tot_surface_Left','Tot_surface_Right','Congruency',
+                      'present_time','subj_response.keys','true_cr','rt','Density_Ratio',
+                      'ADS_Ratio','set','Surf_Ratio','CH_Ratio')]
+
+
+gghistogram(data, x = 'ADS_Ratio',color = "Congruency",fill = "Congruency",bins=60) + xlim(c(0,1))
+gghistogram(data, x = 'Density_Ratio',color = "Congruency",fill = "Congruency",bins = 60) + xlim(c(0,1))
+gghistogram(data, x = 'Surf_Ratio',color = "Congruency",fill = "Congruency",bins = 60) + xlim(c(0,1))
+gghistogram(data, x = 'CH_Ratio',color = "Congruency",fill = "Congruency",bins = 60) + xlim(c(0,1))
+
+
+```
+
+
+
+Heirarchal analysis data preparation
+
+```{r}
+
+newdata <- read_csv("K:/research_related/EladsHull3/results_and_analysis/data_files/data_cleaned.csv")
+newdata$seen <- ifelse(newdata$seen == 'p',1,0)
+data_catch <- subset(newdata, correctans = 'None')
+
+data <- subset(newdata, correctans != 'None')
+data <- subset(data, participant != 21 & participant != 15)
+
+
+data$Density_Ratio <- round(data$Density_Ratio,4)
+data$Surface_Ratio <- round(data$Surface_Ratio,4)
+data$CH_Ratio <- round(data$CH_Ratio,4)
+data$ADS_Ratio <- round(data$ADS_Ratio,4)
+
+
+a <- data  %>% group_by(participant,task_Type,Congruency,present_time) %>% 
+  summarise((rt - mean(rt))/sd(rt))
+data$rt_z_score <- a$`(rt - mean(rt))/sd(rt)`
+data <- subset(data,rt_z_score < 3 & rt_z_score > -3)
+
+
+
+dataseen <- data[,c('seen','Congruency','task_Type','present_time',
+                    'num_ratio','Density_Ratio','Surface_Ratio','CH_Ratio','ADS_Ratio')]
+
+
+dataseen <- dataseen %>% group_by(task_Type,Congruency,num_ratio,CH_Ratio,Density_Ratio,Surface_Ratio,ADS_Ratio,present_time) %>% 
+  dplyr::summarise(seen = mean(seen))
+
+
+write.csv(dataseen,'K:/research_related/EladsHull3/results_and_analysis/Jasp_Analysis/seen_hierarchical.csv')
+
+```

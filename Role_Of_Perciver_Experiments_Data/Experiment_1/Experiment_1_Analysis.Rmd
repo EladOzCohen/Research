@@ -1,0 +1,499 @@
+```{r Loading packages, echo=FALSE, message=FALSE, warning=FALSE}
+#Loading the data and coding relevent variables as factors
+
+library(lme4)
+library(tidyverse)
+library(dplyr)
+library(MASS)
+library(readr)
+library(ggplot2)
+library(effectsize)
+library(tidyr)
+library("emmeans")  # emmeans must now be loaded explicitly for follow-up tests.
+library("afex")     # needed for ANOVA functions.
+library("multcomp")
+library(MASS) # v7.3-50
+library(apaTables) # ic
+library (esc)
+library(reshape2)
+library(data.table)
+library(xtable)
+library(plyr)
+library(ggpubr)
+library(ggsignif) 
+
+
+```
+
+# Whole Data Analysis 
+
+### Seen 
+```{r Seen} 
+
+newdata <- read_csv("D:/OneDrive/EladsB/research_related/first_exp(2901)/hide/2203_data_new.csv")
+newdata_catch <- subset(newdata, num_Left == "None")
+newdata <- subset(newdata, num_Left != "None")
+newdata$task_Type <- revalue(newdata$task_Type,c('Surface judg' = 'Surface Judgment','Numerosity judg' = 'Numerical Judgment'))
+newdata$participant <- factor(newdata$participant)
+newdata$Congruency <- as.factor(newdata$Congruency)
+newdata$present_time <- as.factor(newdata$present_time)
+newdata$task_Type <- as.factor(newdata$task_Type)
+newdata$group <- as.factor(newdata$group)
+
+
+newdata <- subset(newdata,participant != 18 & participant != 23 &
+                 participant != 30 & participant != 33 & participant != 38) #removing participants due to high 'seen' rate in the catch trials
+
+
+#Trimming all observation with RT 3 SD above/below the mean)
+a <- newdata  %>% group_by(participant,Congruency,present_time,task_Type,group) %>% 
+  summarise((rt - mean(rt))/sd(rt))
+newdata$rt_z_score <- a$`(rt - mean(rt))/sd(rt)`
+newdata$rt_z_score <- scale(newdata$rt)
+newdata <- subset(newdata,rt_z_score < 3 & rt_z_score > -3)
+
+
+newdata$CH_Ratio <- round(as.numeric(newdata$CH_Ratio),4)
+newdata$SurfAreaRatio <- round(as.numeric(newdata$SurfAreaRatio),4)
+newdata$ADS_Ratio <- round(newdata$ADS_Ratio,4)
+newdata$Density_Ratio <- round(as.numeric(newdata$Density_Ratio),4)
+
+
+#paf <- newdata %>% group_by(task_Type,Congruency,present_time,num_ratio,SurfAreaRatio,CH_Ratio,ADS_Ratio,Density_Ratio) %>% #dplyr::summarise(mean_seen = mean(seen))
+#paf_num_0.1 <- subset(paf,task_Type == 'Numerical Judgment' & present_time == 0.034 & Congruency == 'Incongruent')
+#lm.beta(stepAIC(lm(mean_seen ~  CH_Ratio + Density_Ratio + SurfAreaRatio + ADS_Ratio , data = paf_num_0.1),direction = "both",trace = 0))
+#write.csv(paf,'D:/OneDrive/EladsB/research_related/first_exp(2901)/Jasp_analysis/seen_new_heirarchal.csv')
+#Extracting only the relevant variables from the data & craeting seen/unseen data
+#newdata <- newdata[c('participant','group','Congruency','present_time','task_Type','true_cr','seen','rt')] 
+
+
+seen_aov <- aov_ez("participant", "seen", newdata, between = c("group"),
+        within = c("Congruency", "present_time","task_Type"),anova_table=list(correction = "GG", es = "pes"))
+
+knitr::kable((nice(seen_aov)))
+
+
+
+
+#Congruency X presentatoin time
+afex_plot(seen_aov,x = "present_time",trace ="Congruency",
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_classic() + ggtitle("Presentatoin time X congruency") + ylab("Seen proportion") +
+  coord_cartesian(ylim=c(0.5,1)) + xlab("Presentation Time")
+
+
+#Congruency X task type
+seen_double <- afex_plot(seen_aov,x = "task_Type",trace ="Congruency",
+                         factor_levels = list(task_Type = c("Numerical Judgment","Surface Judgment")),
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_bw() + ggtitle("") + ylab("Seen proportion") + xlab("Type of Task")
+  coord_cartesian(ylim=c(0.5,1)) #Note that the difference between tasks is significent only in the early
+#presentatin times!!!
+seen_double
+#ggsave('seen_double.png', dpi = 240)
+
+seen_triple <- afex_plot(seen_aov,x = "present_time",trace ="Congruency",panel = 'task_Type',
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  ggtitle("") + ylab("Seen proportion") +
+  theme_bw() + coord_cartesian(ylim=c(0.5,1)) + xlab("Presentation Time") + scale_x_discrete(labels = c(17,34,100,500)) 
+
+seen_triple
+
+
+#Group X presentatoin time X task type
+
+
+
+#### Using the "emmeans" and "pairs" functions, I can use multiple comparisons. #####
+#comparison <- emmeans(seen_aov, ~Congruency|task_Type|present_time) #I need to insert the name of my AOV model, then to specify the variables I wish to calculate their means. Above, i calculated the means of my three variables: cong,present time and task type.  
+
+pa <- pairs(emmeans(seen_aov, ~ Congruency|task_Type),adj="bon") #Inorder to test for significence of the difference of the means
+
+#I use the function "pairs". I insert the name of my variable containing the comparisons, then I specify my multiple-adjusetment method.
+
+#write.csv(seen_aov[["data"]][["wide"]],'D:/OneDrive/EladsB/research_related/first_exp(2901)/Jasp_analysis/seen_aov')
+
+```
+
+
+
+
+
+## RT
+```{r RT}
+#Loading the data and coding releven
+newdata <- read_csv("D:/OneDrive/EladsB/research_related/first_exp(2901)/hide/2203_data_new.csv")
+newdata_catch <- subset(newdata, num_Left == "None")
+newdata <- subset(newdata, num_Left != "None")
+newdata$task_Type <- revalue(newdata$task_Type,c('Surface judg' = 'Surface Judgment','Numerosity judg' = 'Numerical Judgment'))
+newdata$participant <- factor(newdata$participant)
+newdata$Congruency <- as.factor(newdata$Congruency)
+newdata$present_time <- as.factor(newdata$present_time)
+newdata$task_Type <- as.factor(newdata$task_Type)
+newdata$group <- as.factor(newdata$group)
+newdata$rt <- newdata$rt * 1000
+
+newdata <- subset(newdata,participant != 18 & participant != 23 &
+                  participant != 30 & participant != 33 & participant != 38)
+
+### Should be calculate the RT including the "seen" responses or not???? => Yes.
+newdata <- subset(newdata, true_cr == 1 & seen == 1)
+
+
+#Trimming all observation with RT 3 SD above/below the mean)
+#a <- newdata  %>% group_by(participant,Congruency,present_time,task_Type,group) %>% 
+#  summarise((rt - mean(rt))/sd(rt))
+#newdata$rt_z_score <- a$`(rt - mean(rt))/sd(rt)`
+#newdata$rt_z_score <- scale(newdata$rt)
+#newdata <- subset(newdata,rt_z_score < 3 & rt_z_score > -3)
+
+
+
+rt_aov <- aov_ez("participant", "rt", newdata, between = c("group"),
+                     within = c("Congruency", "present_time","task_Type"),anova_table=list(correction = "GG", es = "pes"))
+knitr::kable((nice(rt_aov)))
+
+
+
+#Congruency
+cong_rt <- afex_plot(rt_aov,x = "Congruency", 
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_classic() + ggtitle("Congruency") + ylab("RT (in seconds)") +
+  coord_cartesian(ylim=c(200,800))
+
+cong_rt
+
+
+# PRESENT TIME
+afex_plot(rt_aov,x = "present_time", 
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_classic() + ggtitle("Presentation time") + ylab("RT (in seconds)") +
+  coord_cartesian(ylim=c(200,800))
+
+
+
+# Task type
+afex_plot(rt_aov,x = "task_Type", 
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+  theme_classic() + ggtitle("Task type") + ylab("RT (in seconds)") +
+  coord_cartesian(ylim=c(200,800))
+
+
+
+# Presentation time X Congruency X Task type interaction
+rt_triple <-  afex_plot(rt_aov,x = "present_time",trace = "Congruency",panel = "task_Type", 
+                        factor_levels = list(task_Type = c("Numerical Judgment","Surface Judgment")),
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0,
+          error_ci = FALSE) +
+      ylab("RT (miliseconds)") + 
+  coord_cartesian(ylim=c(200,800)) + xlab('Presentatoin Time') + scale_x_discrete(labels = c(17,34,100,500)) + 
+  theme_bw()
+
+ggsave('rt_triple.png',dpi = 240)
+
+#ggarrange(cr_triple,rt_triple,common.legend = TRUE)
+##### Maybe I should put all the plots in the same variable and then merge them or something??
+
+```
+
+ 
+
+## CR|SEEN
+```{r CR|Seen, message=FALSE, warning=FALSE}
+
+#Loading the data and coding relevent variables as factors
+newdata <- read_csv("D:/OneDrive/EladsB/research_related/first_exp(2901)/hide/2203_data_new.csv")
+newdata_catch <- subset(newdata, num_Left == "None")
+newdata <- subset(newdata, num_Left != "None")
+newdata$task_Type <- revalue(newdata$task_Type,c('Surface judg' = 'Surface Judgment','Numerosity judg' = 'Numerical Judgment'))
+
+newdata$participant <- factor(newdata$participant)
+newdata$Congruency <- as.factor(newdata$Congruency)
+newdata$present_time <- as.factor(newdata$present_time)
+newdata$task_Type <- as.factor(newdata$task_Type)
+newdata$group <- as.factor(newdata$group)
+
+newdata <- subset(newdata,participant != 18 & participant != 23 &
+                participant != 30 & participant != 33 & participant != 38)
+
+#Trimming all observation with RT 3 SD above/below the mean)
+a <- newdata  %>% group_by(participant,Congruency,present_time,task_Type,group) %>% 
+  summarise((rt - mean(rt))/sd(rt))
+newdata$rt_z_score <- a$`(rt - mean(rt))/sd(rt)`
+newdata$rt_z_score <- scale(newdata$rt)
+newdata <- subset(newdata,rt_z_score < 3 & rt_z_score > -3)
+
+
+
+cr_seen <- subset(newdata, seen == 1)
+
+crseen_aov <- aov_ez("participant", "true_cr", cr_seen, between = c("group"),
+        within = c("Congruency", "task_Type","present_time"),anova_table=list(correction = "GG", es = "pes"))
+
+
+knitr::kable((nice(crseen_aov)))
+
+
+
+#Congruency 
+afex_plot(crseen_aov,x = "Congruency", error = "between",
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0) +
+  theme_classic() + ggtitle("Congruency Effect") + ylab("CR|Seen") +
+  coord_cartesian(ylim=c(0.49,1))
+
+
+#presentation time
+afex_plot(crseen_aov,x = "present_time", error = "between",
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0) +
+  theme_classic() + ggtitle("Presentation time main effect") + ylab("CR|Seen") +
+  coord_cartesian(ylim=c(0.49,1))
+
+
+#Task type
+afex_plot(crseen_aov,x = "task_Type", error = "within",
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0) +
+  theme_classic() + ggtitle("Task type main effect") + ylab("CR|Seen") +
+  coord_cartesian(ylim=c(0.49,1))
+
+
+#Cong X present time X task type
+crseen_triple <- afex_plot(crseen_aov,x = "present_time",trace = "Congruency",panel = "task_Type",error_ci =FALSE,
+                           factor_levels = list(task_Type = c("Numerical Judgment","Surface Judgment")),
+          error_arg = list(size = .8, width = 0.2),
+          point_arg = list(size = 3), line_arg = list(size = 1),data_alpha = 0) +
+  theme_bw() + ggtitle("") + ylab("CR|Seen") + xlab("Presentation Time") +
+  coord_cartesian(ylim=c(0.49,1)) + scale_x_discrete(labels = c(17,34,100,500))  
+
+ggsave('crseen_triple.png',dpi = 240)
+
+
+comparison <- emmeans(crseen_aov, ~ Congruency|task_Type|present_time) #I need to insert the name of my AOV model, then to specify the variables I wish to calculate their means. Above, i calculated the means of my three variables: cong,present time and task type.  
+
+pairs(comparison,adj="bon")
+
+
+```
+
+
+
+
+
+
+
+
+
+Accuracy In Total
+
+```{r}
+
+#Loading the data and coding relevent variables as factors
+newdata <- read_csv("D:/OneDrive/EladsB/research_related/first_exp(2901)/hide/2203_data_new.csv")
+newdata_catch <- subset(newdata, num_Left == "None")
+newdata <- subset(newdata, num_Left != "None")
+newdata$task_Type <- revalue(newdata$task_Type,c('Surface judg' = 'Surface Judgment','Numerosity judg' = 'Numerical Judgment'))
+
+newdata$participant <- factor(newdata$participant)
+newdata$Congruency <- as.factor(newdata$Congruency)
+newdata$present_time <- as.factor(newdata$present_time)
+newdata$task_Type <- as.factor(newdata$task_Type)
+newdata$group <- as.factor(newdata$group)
+newdata$num_ratio <- as.factor(newdata$num_ratio)
+
+newdata <- subset(newdata,participant != 18 & participant != 23 &
+                participant != 30 & participant != 33 & participant != 38)
+
+#Trimming all observation with RT 3 SD above/below the mean)
+a <- newdata  %>% group_by(participant,Congruency,present_time,task_Type,group) %>% 
+  summarise((rt - mean(rt))/sd(rt))
+newdata$rt_z_score <- a$`(rt - mean(rt))/sd(rt)`
+newdata$rt_z_score <- scale(newdata$rt)
+newdata <- subset(newdata,rt_z_score < 3 & rt_z_score > -3)
+
+
+
+cr<- subset(newdata)
+
+cr_aov <- aov_ez("participant", "true_cr", cr,
+        within = c("Congruency", "task_Type","present_time","num_ratio"),anova_table=list(correction = "GG", es = "pes"))
+
+
+knitr::kable((nice(cr_aov)))
+
+
+
+#Congruency 
+afex_plot(cr_aov,x = "Congruency", error = "between",
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0) +
+  theme_classic() + ggtitle("Congruency Effect") + ylab("Accuracy") +
+  coord_cartesian(ylim=c(0.49,1))
+
+
+#presentation time
+afex_plot(cr_aov,x = "present_time", error = "between",
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0) +
+  theme_classic() + ggtitle("Presentation time main effect") + ylab("Accuracy") +
+  coord_cartesian(ylim=c(0.49,1))
+
+
+#Task type
+afex_plot(cr_aov,x = "task_Type", error = "within",
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0) +
+  theme_classic() + ggtitle("Task type main effect") + ylab("Accuracy") +
+  coord_cartesian(ylim=c(0.49,1))
+
+
+
+#Cong X present time X task type
+crseen_triple <- afex_plot(cr_aov,x = "present_time",trace = "Congruency",panel = "task_Type",error_ci =FALSE,
+                           factor_levels = list(task_Type = c("Numerical Judgment","Surface Judgment")),
+          error_arg = list(size = .8, width = 0.2),
+          point_arg = list(size = 3), line_arg = list(size = 1),data_alpha = 0) +
+  theme_bw() + ggtitle("") + ylab("Accuracy") + xlab("Presentation Time") +
+  coord_cartesian(ylim=c(0.49,1)) + scale_x_discrete(labels = c(17,34,100,500))  
+
+crseen_triple
+
+
+# Numerical Ratio X Congruency X Task Type
+afex_plot(cr_aov,x = "num_ratio",trace = "Congruency",panel = "task_Type", error = "within",
+          error_arg = list(size = 0.8, width = 0.2),
+          point_arg = list(size = 2), line_arg = list(size = 0.9),data_alpha = 0) +
+  theme_classic() + ggtitle("Task type main effect") + ylab("Accuracy") +
+  coord_cartesian(ylim=c(0.49,1))
+
+
+
+#ggsave('crseen_triple.png',dpi = 240)
+
+
+comparison <- emmeans(cr_aov, ~ Congruency|num_ratio|task_Type,ads="bon") #I need to insert the name of my AOV model, then to specify the variables I wish to calculate their means. Above, i calculated the means of my three variables: cong,present time and task type.  
+
+pairs(comparison,adj="bon")
+```
+
+
+
+```{r fig.height=10, fig.width=5}
+ggpubr::ggarrange(seen_double,crseen_triple,rt_triple,common.legend = T,align = "hv",nrow = 3,ncol = 1,
+                  labels = 'AUTO')
+
+```
+
+
+
+
+Catch Trials Analysis
+```{r Catch Trials Analysis}
+#Loading the data and coding relevent variables as factors
+
+newdata <- read_csv("D:/OneDrive/EladsB/research_related/first_exp(2901)/hide/2203_data_new.csv")
+newdata_catch <- subset(newdata, num_Left == "None")
+newdata <- subset(newdata, num_Left != "None")
+newdata$task_Type <- revalue(newdata$task_Type,c('Surface judg' = 'Surface Judgment','Numerosity judg' = 'Numerical Judgment'))
+newdata$participant <- factor(newdata$participant)
+newdata$Congruency <- as.factor(newdata$Congruency)
+newdata$present_time <- as.factor(newdata$present_time)
+newdata$task_Type <- as.factor(newdata$task_Type)
+newdata$group <- as.factor(newdata$group)
+
+
+#View(newdata_catch %>% group_by(participant) %>% dplyr::summarise(catch = sum(seen)/70))
+
+
+
+#Trimming all observation with RT 3 SD above/below the mean)
+a <- newdata  %>% group_by(participant,Congruency,present_time,task_Type,group) %>% 
+  summarise((rt - mean(rt))/sd(rt))
+newdata$rt_z_score <- a$`(rt - mean(rt))/sd(rt)`
+newdata$rt_z_score <- scale(newdata$rt)
+newdata <- subset(newdata,rt_z_score < 3 & rt_z_score > -3)
+
+
+```
+
+
+Heirarchal analysis
+
+```{r message=FALSE, warning=FALSE}
+newdata <- read_csv("D:/OneDrive/EladsB/research_related/first_exp(2901)/hide/2203_data_new.csv")
+newdata_catch <- subset(newdata, num_Left == "None")
+newdata <- subset(newdata, num_Left != "None")
+newdata$task_Type <- revalue(newdata$task_Type,c('Surface judg' = 'Surface Judgment','Numerosity judg' = 'Numerical Judgment'))
+newdata$participant <- factor(newdata$participant)
+newdata$Congruency <- as.factor(newdata$Congruency)
+newdata$present_time <- as.factor(newdata$present_time)
+newdata$task_Type <- as.factor(newdata$task_Type)
+newdata$group <- as.factor(newdata$group)
+
+newdata <- subset(newdata,participant != 18 & participant != 23 &
+                 participant != 30 & participant != 33 & participant != 38)
+
+
+#Trimming all observation with RT 3 SD above/below the mean)
+a <- newdata  %>% group_by(participant,Congruency,present_time,task_Type,group) %>% 
+  summarise((rt - mean(rt))/sd(rt))
+newdata$rt_z_score <- a$`(rt - mean(rt))/sd(rt)`
+newdata$rt_z_score <- scale(newdata$rt)
+newdata <- subset(newdata,rt_z_score < 3 & rt_z_score > -3)
+
+
+newdata$CH_Ratio <- round(as.numeric(newdata$CH_Ratio),4)
+newdata$SurfAreaRatio <- round(as.numeric(newdata$SurfAreaRatio),4)
+newdata$ADS_Ratio <- round(newdata$ADS_Ratio,4)
+newdata$Density_Ratio <- round(as.numeric(newdata$Density_Ratio),4)
+
+newdata <- subset(newdata, seen == 1 & true_cr == 1)
+
+paf <- newdata %>% group_by(task_Type,Congruency,present_time,num_ratio,SurfAreaRatio,CH_Ratio,ADS_Ratio,Density_Ratio) %>% dplyr::summarise(mean_rt = mean(rt))
+write.csv(paf,'D:/OneDrive/EladsB/research_related/first_exp(2901)/Jasp_analysis/rt_regular_new_heirarchal.csv')
+
+```
+
+
+
+```{r message=FALSE, warning=FALSE}
+newdata <- read_csv("D:/OneDrive/EladsB/research_related/first_exp(2901)/hide/2203_data_new.csv")
+newdata_catch <- subset(newdata, num_Left == "None")
+newdata <- subset(newdata, num_Left != "None")
+newdata$task_Type <- revalue(newdata$task_Type,c('Surface judg' = 'Surface Judgment','Numerosity judg' = 'Numerical Judgment'))
+newdata$participant <- factor(newdata$participant)
+newdata$Congruency <- as.factor(newdata$Congruency)
+newdata$present_time <- as.factor(newdata$present_time)
+newdata$task_Type <- as.factor(newdata$task_Type)
+newdata$group <- as.factor(newdata$group)
+
+newdata <- subset(newdata,participant == 1)
+
+
+newdata$CH_Ratio <- round(as.numeric(newdata$CH_Ratio),4)
+newdata$SurfAreaRatio <- round(as.numeric(newdata$SurfAreaRatio),4)
+newdata$ADS_Ratio <- round(newdata$ADS_Ratio,4)
+newdata$Density_Ratio <- round(as.numeric(newdata$Density_Ratio),4)
+
+
+
+
+gghistogram(data = newdata, x = "Density_Ratio", fill = "Congruency", color = "Congruency",bins = 60)
+ggdensity(data = newdata, x = "ADS_Ratio", add = "mean",fill = "Congruency", color = "Congruency",palette = c("#232323", "#8e8e8e"),bins = 60) + ylab("Frequency") + xlab("ADS Ratio")
+
+
+```
